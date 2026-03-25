@@ -13,43 +13,37 @@ WEIGHTS = {
     "emergency": 100.0  # High priority for emergency vehicles
 }
 
-def compute_signal_priority(junctions: dict) -> dict:
+def compute_signal_priority(junctions: dict, current_green: str = None, vehicle_passed: bool = False) -> dict:
     """
-    Compute priority based on weighted vehicle counts.
-    Handles both simple counts (int) and detailed breakdowns (dict).
+    Compute priority based on weighted vehicle counts and current state.
     """
     if not junctions:
         return {"error": "No junction data provided"}
 
-    # Check for the special case where all junctions have an emergency vehicle
-    emergency_junctions = [name for name, data in junctions.items() if isinstance(data, dict) and data.get("emergency", 0) > 0]
-    if len(emergency_junctions) > 1 and len(emergency_junctions) == len(junctions):
-        # If all junctions have an emergency vehicle, trigger an all-green override
-        all_green_duration = 30 # Short, equal duration for all
-        return {
-            "green_junction": "ALL",
-            "priority_order": list(junctions.keys()),
-            "green_durations": {name: all_green_duration for name in junctions},
-            "weights": {name: 100 for name in junctions}, # Max weight for all
-            "vehicle_counts": junctions,
-            "cycle_duration": 120,
-            "special_case": "ALL_GREEN_EMERGENCY"
-        }
-
+    # Calculate weighted counts
     weighted_counts = {}
     for name, data in junctions.items():
-        # Check if data is a detailed dictionary or a simple integer
         if isinstance(data, dict):
-            # Calculate score from detailed counts (new manual form & upload)
             w = sum(data.get(v_type, 0) * WEIGHTS.get(v_type, 1.0) for v_type in data)
             weighted_counts[name] = round(w, 2)
         elif isinstance(data, int):
-            # Fallback for old manual mode (treat as cars)
             weighted_counts[name] = data * WEIGHTS["car"]
 
-    total_weight = sum(weighted_counts.values()) or 1
+    # Determine priority order
     priority_order = sorted(weighted_counts, key=weighted_counts.get, reverse=True)
+    
+    # If a vehicle has passed, the current green light should turn red
+    if vehicle_passed and current_green:
+        # The next green light is the next in the priority order
+        current_index = priority_order.index(current_green)
+        next_green_index = (current_index + 1) % len(priority_order)
+        next_green = priority_order[next_green_index]
+    else:
+        # Otherwise, the green light is the one with the highest priority
+        next_green = priority_order[0] if priority_order else "None"
 
+    # Set green durations
+    total_weight = sum(weighted_counts.values()) or 1
     CYCLE_DURATION = 120
     green_durations = {
         name: round((weighted_counts[name] / total_weight) * CYCLE_DURATION if total_weight > 0 else 30)
@@ -57,7 +51,7 @@ def compute_signal_priority(junctions: dict) -> dict:
     }
 
     return {
-        "green_junction": priority_order[0] if priority_order else "None",
+        "green_junction": next_green,
         "priority_order": priority_order,
         "green_durations": green_durations,
         "weights": weighted_counts,

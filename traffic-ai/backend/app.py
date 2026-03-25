@@ -21,7 +21,11 @@ def manual_input():
     """
     data = request.get_json()
     junctions = data.get('junctions', {})
-    result = compute_signal_priority(junctions)
+    current_green = data.get('current_green')
+    vehicle_passed = data.get('vehicle_passed', False)
+
+    # Pass the current state to the logic function
+    result = compute_signal_priority(junctions, current_green, vehicle_passed)
     return jsonify(result)
 
 
@@ -61,4 +65,4 @@ def health():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5002)
